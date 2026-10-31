@@ -48,6 +48,12 @@ app.post('/add-book', (req, res) => {
 })
 
 
+app.get('/all-books', async(req, res) => {
+    const allBooks = await booksCollection.find().toArray();
+    res.send(allBooks);
+})
+
+
 app.listen(PORT, () => {
     console.log(`Server is running at ${PORT}`);
     
