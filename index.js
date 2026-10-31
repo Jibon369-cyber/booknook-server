@@ -1,9 +1,16 @@
 import express from 'express';
 import { MongoClient } from "mongodb";
 import "dotenv/config";
+import cors from 'cors'
+
+
 
 const app = express()
 const PORT = process.env.PORT || 9000;
+
+
+app.use(cors());
+app.use(express.json());
 
 
 
@@ -19,12 +26,25 @@ export async function connectToMongoDB() {
   }
 }
 
-connectToMongoDB();
+const mongoClient = await connectToMongoDB();
+
+const db = mongoClient.db('booknook')
+
+const booksCollection = db.collection('books')
 
 
 
 app.get('/', (req, res) => {
     res.send({message: 'Server is Running Fine'});
+})
+
+
+app.post('/add-book', (req, res) => {
+    const data = req.body
+    
+    const result = booksCollection.insertOne(data)
+    
+    res.send(result)
 })
 
 
