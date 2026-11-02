@@ -31,6 +31,7 @@ const mongoClient = await connectToMongoDB();
 const db = mongoClient.db('booknook')
 
 const booksCollection = db.collection('books')
+const borrowsCollection = db.collection("borrows");
 
 
 
@@ -84,6 +85,27 @@ app.delete("/delete-book/:id", async (req, res) => {
   const id = req.params.id;
   const result = await booksCollection.deleteOne({ _id: new ObjectId(id) });
   res.send(result);
+});
+
+
+app.post("/borrow", async (req, res) => {
+  const data = req.body;
+  const result = await borrowsCollection.insertOne(data);
+  res.send(result);
+});
+
+app.get("/my-borrows", async (req, res) => {
+    const email = req.query.email;
+    const borrows = await borrowsCollection.find({ userEmail: email }).toArray();
+    res.send(borrows);
+});
+
+
+app.delete("/return-book/:id", async (req, res) => {
+  await db
+    .collection("borrows")
+    .deleteOne({ _id: new ObjectId(req.params.id) });
+  res.json({ ok: true });
 });
 
 
