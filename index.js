@@ -61,6 +61,17 @@ app.get('/book/:id', async(req, res) => {
 })
 
 
+app.get("/my-books", async (req, res) => {
+  const email = req.query.email;
+  const filter = email ? { addedBy: email } : {};
+  const books = await booksCollection.find(filter).toArray();
+  res.send(books);
+});
+
+
+
+
+
 app.listen(PORT, () => {
     console.log(`Server is running at ${PORT}`);
     
