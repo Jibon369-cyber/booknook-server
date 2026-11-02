@@ -69,7 +69,15 @@ app.get("/my-books", async (req, res) => {
 });
 
 
-
+app.patch("/update-book/:id", async (req, res) => {
+  const id = req.params.id;
+  const { _id, ...updateData } = req.body;
+  const result = await booksCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: updateData },
+  );
+  res.send(result);
+});
 
 
 app.listen(PORT, () => {
