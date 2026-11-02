@@ -9,6 +9,7 @@ const app = express()
 const PORT = process.env.PORT || 9000;
 
 
+
 app.use(cors());
 app.use(express.json());
 
@@ -31,13 +32,14 @@ const mongoClient = await connectToMongoDB();
 const db = mongoClient.db('booknook')
 
 const booksCollection = db.collection('books')
-const borrowsCollection = db.collection("borrows");
+const borrowsCollection = db.collection('borrows')
 
 
 
 app.get('/', (req, res) => {
     res.send({message: 'Server is Running Fine'});
 })
+
 
 
 app.post('/add-book', (req, res) => {
@@ -62,49 +64,67 @@ app.get('/book/:id', async(req, res) => {
 })
 
 
-app.get("/my-books", async (req, res) => {
-  const email = req.query.email;
-  const filter = email ? { addedBy: email } : {};
-  const books = await booksCollection.find(filter).toArray();
-  res.send(books);
-});
+// My Books: books added by a specific user (by email)
+app.get('/my-books', async(req, res) => {
+    const email = req.query.email;
+    const filter = email ? { addedBy: email } : {};
+    const books = await booksCollection.find(filter).toArray();
+    res.send(books);
+})
 
 
-app.patch("/update-book/:id", async (req, res) => {
-  const id = req.params.id;
-  const { _id, ...updateData } = req.body;
-  const result = await booksCollection.updateOne(
-    { _id: new ObjectId(id) },
-    { $set: updateData },
-  );
-  res.send(result);
-});
+// Update a book
+app.patch('/update-book/:id', async(req, res) => {
+    const id = req.params.id;
+    const { _id, ...updateData } = req.body;
+    const result = await booksCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+    );
+    res.send(result);
+})
 
 
-app.delete("/delete-book/:id", async (req, res) => {
-  const id = req.params.id;
-  const result = await booksCollection.deleteOne({ _id: new ObjectId(id) });
-  res.send(result);
-});
+// Delete a book
+app.delete('/delete-book/:id', async(req, res) => {
+    const id = req.params.id;
+    const result = await booksCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+})
 
 
+// Borrow a book
 app.post("/borrow", async (req, res) => {
   const data = req.body;
   const result = await borrowsCollection.insertOne(data);
+  if (data.bookId) {
+    await booksCollection.updateOne(
+      { _id: new ObjectId(data.bookId) },
+      { $inc: { availableCopies: -1 } }
+    );
+  }
   res.send(result);
 });
 
-app.get("/my-borrows", async (req, res) => {
-    const email = req.query.email;
-    const borrows = await borrowsCollection.find({ userEmail: email }).toArray();
-    res.send(borrows);
+
+// My borrows for a user
+app.get('/my-borrows', async (req, res) => {
+  const email = req.query.email;
+  const borrows = await borrowsCollection.find({ userEmail: email }).toArray();
+  res.send(borrows);
 });
 
 
+// Return a borrowed book
 app.delete("/return-book/:id", async (req, res) => {
-  await db
-    .collection("borrows")
-    .deleteOne({ _id: new ObjectId(req.params.id) });
+  const borrow = await borrowsCollection.findOne({ _id: new ObjectId(req.params.id) });
+  await borrowsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+  if (borrow?.bookId) {
+    await booksCollection.updateOne(
+      { _id: new ObjectId(borrow.bookId) },
+      { $inc: { availableCopies: 1 } }
+    );
+  }
   res.json({ ok: true });
 });
 
