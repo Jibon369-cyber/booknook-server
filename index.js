@@ -7,6 +7,9 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 // ----- App setup -----
 const app = express();
 const PORT = process.env.PORT || 9000;
+const JWKS = process.env.JWKS_URI
+  ? createRemoteJWKSet(new URL(process.env.JWKS_URI))
+  : null;
 
 app.use(cors());
 app.use(express.json());
@@ -15,23 +18,26 @@ app.use(express.json());
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader) {
+  const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
     return res.status(401).send({ message: "Unauthorized" });
   }
 
-  const token = authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(401).send({ message: "Unauthorized" });
+  if (!JWKS) {
+    console.error("JWT verification is not configured: JWKS_URI is missing");
+    return res.status(500).send({ message: "Authentication is not configured" });
   }
-
-  const JWKS = createRemoteJWKSet(new URL(process.env.JWKS_URI));
 
   try {
-    const { payload } = await jwtVerify(token, JWKS);
-
+    const { payload } = await jwtVerify(match[1], JWKS);
+    if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
+      return res.status(401).send({ message: "Unauthorized" });
+    }
+    req.user = { id: payload.sub, email: payload.email };
     next();
   } catch (error) {
-    return res.status(500).send({ message: "Server Error" });
+    console.error("JWT verification failed", error);
+    return res.status(401).send({ message: "Unauthorized" });
   }
 };
 
@@ -62,7 +68,7 @@ app.get("/", (req, res) => {
 
 // ----- Books: create -----
 app.post("/add-book", verifyToken, (req, res) => {
-  const data = req.body;
+  const data = { ...req.body, addedBy: req.user.email };
   const result = booksCollection.insertOne(data);
   res.send(result);
 });
@@ -82,9 +88,7 @@ app.get("/book/:id", verifyToken, async (req, res) => {
 
 // ----- My Books: books added by a specific user -----
 app.get("/my-books", verifyToken, async (req, res) => {
-  const email = req.query.email;
-  const filter = email ? { addedBy: email } : {};
-  const books = await booksCollection.find(filter).toArray();
+  const books = await booksCollection.find({ addedBy: req.user.email }).toArray();
   res.send(books);
 });
 
@@ -93,7 +97,7 @@ app.patch("/update-book/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
   const { _id, ...updateData } = req.body;
   const result = await booksCollection.updateOne(
-    { _id: new ObjectId(id) },
+    { _id: new ObjectId(id), addedBy: req.user.email },
     { $set: updateData },
   );
   res.send(result);
@@ -102,13 +106,16 @@ app.patch("/update-book/:id", verifyToken, async (req, res) => {
 // ----- Books: delete -----
 app.delete("/delete-book/:id", verifyToken, async (req, res) => {
   const id = req.params.id;
-  const result = await booksCollection.deleteOne({ _id: new ObjectId(id) });
+  const result = await booksCollection.deleteOne({
+    _id: new ObjectId(id),
+    addedBy: req.user.email,
+  });
   res.send(result);
 });
 
 // ----- Borrow: create a borrow record and decrement availableCopies -----
-app.post("/borrow", async (req, res) => {
-  const data = req.body; // { userEmail, bookId, bookTitle, bookImage, borrowDate, returnDate }
+app.post("/borrow", verifyToken, async (req, res) => {
+  const data = { ...req.body, userEmail: req.user.email };
   const result = await borrowsCollection.insertOne(data);
   if (data.bookId) {
     await booksCollection.updateOne(
@@ -121,8 +128,7 @@ app.post("/borrow", async (req, res) => {
 
 // ----- My Borrows: borrow records for a specific user -----
 app.get("/my-borrows", verifyToken, async (req, res) => {
-  const email = req.query.email;
-  const borrows = await borrowsCollection.find({ userEmail: email }).toArray();
+  const borrows = await borrowsCollection.find({ userEmail: req.user.email }).toArray();
   res.send(borrows);
 });
 
@@ -130,8 +136,15 @@ app.get("/my-borrows", verifyToken, async (req, res) => {
 app.delete("/return-book/:id", verifyToken, async (req, res) => {
   const borrow = await borrowsCollection.findOne({
     _id: new ObjectId(req.params.id),
+    userEmail: req.user.email,
   });
-  await borrowsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+  if (!borrow) {
+    return res.status(404).send({ message: "Borrow record not found" });
+  }
+  await borrowsCollection.deleteOne({
+    _id: new ObjectId(req.params.id),
+    userEmail: req.user.email,
+  });
   if (borrow?.bookId) {
     await booksCollection.updateOne(
       { _id: new ObjectId(borrow.bookId) },
