@@ -24,16 +24,12 @@ const verifyToken = async (req, res, next) => {
   }
 
   if (!JWKS) {
-    console.error("JWT verification is not configured: JWKS_URI is missing");
+    
     return res.status(500).send({ message: "Authentication is not configured" });
   }
 
   try {
     const { payload } = await jwtVerify(match[1], JWKS);
-
-    console.log("JWT PAYLOAD:", payload);
-    console.log("USER EMAIL:", payload.email);
-    console.log("USER ID:", payload.sub);
 
     if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
       return res.status(401).send({ message: "Unauthorized" });
@@ -41,7 +37,7 @@ const verifyToken = async (req, res, next) => {
     req.user = { id: payload.sub, email: payload.email };
     next();
   } catch (error) {
-    console.error("JWT verification failed", error);
+    
     return res.status(401).send({ message: "Unauthorized" });
   }
 };
@@ -92,7 +88,7 @@ app.post("/add-book", verifyToken, async (req, res) => {
 
     res.status(201).send(result);
   } catch (error) {
-    console.error("Add book error:", error);
+    
     res.status(500).send({ message: "Failed to add book" });
   }
 });
@@ -169,7 +165,7 @@ app.post("/borrow", verifyToken, async (req, res) => {
 
     res.status(201).send(result);
   } catch (error) {
-    console.error("Borrow error:", error);
+  
     res.status(500).send({ message: "Failed to borrow book" });
   }
 });
@@ -203,9 +199,9 @@ app.delete("/return-book/:id", verifyToken, async (req, res) => {
 });
 
 // ----- Start server -----
-app.listen(PORT, () => {
-  console.log(`Server is running at ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`Server is running at ${PORT}`));
+}
 
 
 export default app;
