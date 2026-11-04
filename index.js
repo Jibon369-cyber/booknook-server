@@ -24,7 +24,7 @@ const verifyToken = async (req, res, next) => {
   }
 
   if (!JWKS) {
-    
+    console.error("JWKS_URI is missing");
     return res.status(500).send({ message: "Authentication is not configured" });
   }
 
@@ -32,12 +32,16 @@ const verifyToken = async (req, res, next) => {
     const { payload } = await jwtVerify(match[1], JWKS);
 
     if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
+      console.error(
+        "JWT payload missing sub/email, keys:",
+        Object.keys(payload),
+      );
       return res.status(401).send({ message: "Unauthorized" });
     }
     req.user = { id: payload.sub, email: payload.email };
     next();
   } catch (error) {
-    
+    console.error("JWT verification failed:", error.code, error.message);
     return res.status(401).send({ message: "Unauthorized" });
   }
 };
