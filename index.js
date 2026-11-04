@@ -30,6 +30,11 @@ const verifyToken = async (req, res, next) => {
 
   try {
     const { payload } = await jwtVerify(match[1], JWKS);
+
+    console.log("JWT PAYLOAD:", payload);
+    console.log("USER EMAIL:", payload.email);
+    console.log("USER ID:", payload.sub);
+
     if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
       return res.status(401).send({ message: "Unauthorized" });
     }
@@ -40,6 +45,8 @@ const verifyToken = async (req, res, next) => {
     return res.status(401).send({ message: "Unauthorized" });
   }
 };
+
+
 
 // ----- MongoDB connection -----
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -67,10 +74,27 @@ app.get("/", (req, res) => {
 });
 
 // ----- Books: create -----
-app.post("/add-book", verifyToken, (req, res) => {
-  const data = { ...req.body, addedBy: req.user.email };
-  const result = booksCollection.insertOne(data);
-  res.send(result);
+// app.post("/add-book", verifyToken, async (req, res) => {
+//   const data = { ...req.body, addedBy: req.user.email };
+//   const result = await booksCollection.insertOne(data);
+//   res.send(result);
+// });
+
+app.post("/add-book", verifyToken, async (req, res) => {
+  try {
+    const data = {
+      ...req.body,
+      addedBy: req.user.email,
+      availableCopies: Number(req.body.totalCopies),
+    };
+
+    const result = await booksCollection.insertOne(data);
+
+    res.status(201).send(result);
+  } catch (error) {
+    console.error("Add book error:", error);
+    res.status(500).send({ message: "Failed to add book" });
+  }
 });
 
 // ----- Books: read all -----
@@ -114,16 +138,40 @@ app.delete("/delete-book/:id", verifyToken, async (req, res) => {
 });
 
 // ----- Borrow: create a borrow record and decrement availableCopies -----
+// app.post("/borrow", verifyToken, async (req, res) => {
+//   const data = { ...req.body, userEmail: req.user.email };
+//   const result = await borrowsCollection.insertOne(data);
+//   if (data.bookId) {
+//     await booksCollection.updateOne(
+//       { _id: new ObjectId(data.bookId) },
+//       { $inc: { availableCopies: -1 } },
+//     );
+//   }
+//   res.send(result);
+// });
+
+
 app.post("/borrow", verifyToken, async (req, res) => {
-  const data = { ...req.body, userEmail: req.user.email };
-  const result = await borrowsCollection.insertOne(data);
-  if (data.bookId) {
-    await booksCollection.updateOne(
-      { _id: new ObjectId(data.bookId) },
-      { $inc: { availableCopies: -1 } },
-    );
+  try {
+    const data = {
+      ...req.body,
+      userEmail: req.user.email,
+    };
+
+    const result = await borrowsCollection.insertOne(data);
+
+    if (data.bookId) {
+      await booksCollection.updateOne(
+        { _id: new ObjectId(data.bookId) },
+        { $inc: { availableCopies: -1 } },
+      );
+    }
+
+    res.status(201).send(result);
+  } catch (error) {
+    console.error("Borrow error:", error);
+    res.status(500).send({ message: "Failed to borrow book" });
   }
-  res.send(result);
 });
 
 // ----- My Borrows: borrow records for a specific user -----
